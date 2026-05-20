@@ -1,42 +1,39 @@
 #!/usr/bin/env bash
+# Runs once when VS Code clones this dotfiles repo into a new Dev Container.
+# Installs a ~/.bashrc snippet that interactively prompts for the superbrain
+# API token on the first terminal opened in the container, then registers
+# the brain MCP at user scope. Subsequent shells skip the prompt because
+# the MCP is already registered.
+
 set -euo pipefail
 
-# Registers the superbrain MCP at user scope inside a Dev Container.
-# Runs automatically when VS Code clones this repo into a new container
-# (via dev.containers.dotfilesRepository in VS Code user settings).
-#
-# Reads SUPERBRAIN_TOKEN from the env. Pass it through from the host in
-# each project's .devcontainer/devcontainer.json:
-#
-#   "remoteEnv": { "SUPERBRAIN_TOKEN": "${localEnv:SUPERBRAIN_TOKEN}" }
-#
-# and export SUPERBRAIN_TOKEN in your host shell rc.
+BASHRC="${HOME}/.bashrc"
+MARKER_START="# >>> superbrain MCP registration >>>"
+MARKER_END="# <<< superbrain MCP registration <<<"
 
-SUPERBRAIN_URL="https://brain.taleth.pro/api/v1/mcp"
-SUPERBRAIN_NAME="superbrain"
-
-log() { echo "[dotfiles] $*"; }
-
-if [[ -z "${SUPERBRAIN_TOKEN:-}" ]]; then
-  log "SUPERBRAIN_TOKEN not set; skipping ${SUPERBRAIN_NAME} MCP registration."
+if grep -qF "$MARKER_START" "$BASHRC" 2>/dev/null; then
   exit 0
 fi
 
-if ! command -v claude >/dev/null 2>&1; then
-  log "claude CLI not on PATH; skipping ${SUPERBRAIN_NAME} MCP registration."
-  exit 0
+cat >> "$BASHRC" <<'EOF'
+
+# >>> superbrain MCP registration >>>
+if [[ $- == *i* ]] && command -v claude >/dev/null 2>&1; then
+  if ! claude mcp get superbrain >/dev/null 2>&1; then
+    echo "[superbrain] Brain MCP not registered in this container."
+    read -r -s -p "[superbrain] Paste API token (Enter to skip): " __SB_TOKEN
+    echo
+    if [[ -n "$__SB_TOKEN" ]]; then
+      if claude mcp add --scope user --transport http superbrain \
+           https://brain.taleth.pro/api/v1/mcp \
+           --header "Authorization: Bearer $__SB_TOKEN" >/dev/null 2>&1; then
+        echo "[superbrain] Registered."
+      else
+        echo "[superbrain] Registration failed. Run 'claude mcp add' manually."
+      fi
+    fi
+    unset __SB_TOKEN
+  fi
 fi
-
-if claude mcp list 2>/dev/null | grep -q "^${SUPERBRAIN_NAME}"; then
-  log "${SUPERBRAIN_NAME} MCP already registered."
-  exit 0
-fi
-
-claude mcp add \
-  --scope user \
-  --transport http \
-  "${SUPERBRAIN_NAME}" \
-  "${SUPERBRAIN_URL}" \
-  --header "Authorization: Bearer ${SUPERBRAIN_TOKEN}"
-
-log "${SUPERBRAIN_NAME} MCP registered."
+# <<< superbrain MCP registration <<<
+EOF
