@@ -1,12 +1,31 @@
 #!/usr/bin/env bash
 # Runs once when VS Code clones this dotfiles repo into a new Dev Container.
-# Installs a ~/.bashrc snippet that interactively prompts for the superbrain
-# API token on the first terminal opened in the container, then registers
-# the brain MCP at user scope. Subsequent shells skip the prompt because
-# the MCP is already registered.
+#
+# Two independent, idempotent steps:
+#
+#   1. Symlink claude/CLAUDE.md into ~/.claude/CLAUDE.md so every Claude
+#      Code session in the devcontainer auto-loads the brain-memory
+#      directive (and any other user-level conventions).
+#
+#   2. Install a ~/.bashrc snippet that interactively prompts for the
+#      superbrain API token on the first terminal opened in the
+#      container, then registers the brain MCP at user scope.
+#      Subsequent shells skip the prompt because the MCP is already
+#      registered.
 
 set -euo pipefail
 
+# Resolve where VS Code cloned this repo. `dirname $0` works for the
+# typical dotfiles install command (`~/dotfiles/install.sh`).
+DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# --- 1. User-level CLAUDE.md ---
+# `ln -sf` is idempotent: replaces an existing symlink, no-op when the
+# link already points at the right target.
+mkdir -p "${HOME}/.claude"
+ln -sf "${DOTFILES_DIR}/claude/CLAUDE.md" "${HOME}/.claude/CLAUDE.md"
+
+# --- 2. Brain MCP registration via bashrc snippet ---
 BASHRC="${HOME}/.bashrc"
 MARKER_START="# >>> superbrain MCP registration >>>"
 MARKER_END="# <<< superbrain MCP registration <<<"
