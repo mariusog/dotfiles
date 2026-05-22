@@ -46,7 +46,3 @@ have failed.)
 Do not try to read `~/.claude/projects/<slug>/memory/` — the local
 auto-memory dir was deprecated as a write target by superbrain issue
 #236. The brain MCP is the only place memory now lives.
-
-### Canonical reference
-
-https://brain.taleth.pro/concepts/session-start-brain-memory-lookup

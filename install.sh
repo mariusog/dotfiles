@@ -44,7 +44,7 @@ if [[ $- == *i* ]] && command -v claude >/dev/null 2>&1; then
     echo
     if [[ -n "$__SB_TOKEN" ]]; then
       if claude mcp add --scope user --transport http superbrain \
-           https://brain.taleth.pro/api/v1/mcp \
+           https://superbrain.taleth.pro/api/v1/mcp \
            --header "Authorization: Bearer $__SB_TOKEN" >/dev/null 2>&1; then
         echo "[superbrain] Registered."
       else
