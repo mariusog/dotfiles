@@ -8,11 +8,21 @@ per-repo `CLAUDE.md`. Repo-agnostic — phrased to apply in any project.
 At the start of any non-trivial task in this devcontainer, pull the
 superbrain's cross-session memory once via:
 
-    mcp__superbrain__read_memory(project: "<cwd-derived-slug>")
+    mcp__superbrain__read_memory(project: "<repo-slug>")
 
-The `<slug>` is Claude Code's native cwd-derived form with the leading
-dash stripped — e.g. cwd `/workspaces/foo-bar` → slug `workspaces-foo-bar`,
-cwd `/workspaces/superbrain` → slug `workspaces-superbrain`.
+The `<slug>` is the **repository name**, not the working directory — e.g.
+cwd `/workspaces/superbrain` → slug `superbrain`, cwd `/workspace` → slug
+`kaia_trade`, cwd `/app` → slug `kaia_portal` / `fpl-stats` /
+`absolute-relative` depending on which repo is checked out. Derive it from
+the git remote or the repo name, not from `pwd`.
+
+Do NOT use the cwd-derived form. Several repos mount at the same path
+(`/app` hosts three different projects), so a cwd-derived slug collides —
+it produced a single junk `app` scope mixing them all, cleaned up
+2026-08-07. The product-owner agent already writes to the repo-name slug
+(superbrain issue #946 made it pass `project: <repo_slug>` literally
+rather than deriving it from its working directory); matching that here
+keeps both producers on one scope per project.
 
 The brain is the only source of truth for memory (per superbrain issue
 #236). The result merges the project's own scope ∪ the cross-cutting
