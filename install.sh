@@ -15,7 +15,10 @@
 #      superbrain API token on the first terminal opened in the
 #      container, then registers the brain MCP at user scope.
 #      Subsequent shells skip the prompt because the MCP is already
-#      registered.
+#      registered. The prompt echoes what you type and the token is
+#      checked against the brain before it is written to
+#      ~/.claude.json, so a mangled paste fails at the prompt instead
+#      of 401'ing silently in every later session.
 
 set -euo pipefail
 
@@ -78,22 +81,67 @@ fi
 cat >> "$BASHRC" <<'EOF'
 
 # >>> superbrain MCP registration >>>
-if [[ $- == *i* ]] && command -v claude >/dev/null 2>&1; then
-  if ! claude mcp get superbrain >/dev/null 2>&1; then
-    echo "[superbrain] Brain MCP not registered in this container."
-    read -r -s -p "[superbrain] Paste API token (Enter to skip): " __SB_TOKEN
-    echo
-    if [[ -n "$__SB_TOKEN" ]]; then
-      if claude mcp add --scope user --transport http superbrain \
-           https://superbrain.taleth.pro/api/v1/mcp \
-           --header "Authorization: Bearer $__SB_TOKEN" >/dev/null 2>&1; then
-        echo "[superbrain] Registered."
-      else
-        echo "[superbrain] Registration failed. Run 'claude mcp add' manually."
-      fi
-    fi
-    unset __SB_TOKEN
+# Wrapped in a function purely so the token stays a `local` and the failure
+# paths can return early without aborting the rest of .bashrc.
+__sb_register() {
+  local url="https://superbrain.taleth.pro/api/v1/mcp"
+  local token code
+
+  command -v claude >/dev/null 2>&1 || return 0
+  claude mcp get superbrain >/dev/null 2>&1 && return 0
+
+  echo "[superbrain] Brain MCP not registered in this container."
+  # Visible prompt on purpose. A silent `read -s` here once let a stray shell
+  # command and the token merge into one unseen line; the resulting 108-char
+  # header 401'd every session until someone read ~/.claude.json by hand.
+  # Seeing what you pasted is worth more than hiding it.
+  read -r -p "[superbrain] Paste API token (Enter to skip): " token
+
+  # Trim whitespace the paste may have carried along.
+  token="${token#"${token%%[![:space:]]*}"}"
+  token="${token%"${token##*[![:space:]]}"}"
+
+  if [[ -z $token ]]; then
+    echo "[superbrain] Skipped."
+    return 0
   fi
+
+  case $token in
+    *[[:space:]]*|*\'*|*\"*)
+      echo "[superbrain] Token contains whitespace or quotes — looks like more than" \
+           "one thing was pasted. Not registered."
+      return 1
+      ;;
+  esac
+
+  # Verify against the brain before writing it to ~/.claude.json: a bad token
+  # is otherwise invisible until the next session fails to connect.
+  if command -v curl >/dev/null 2>&1; then
+    code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$url" \
+      -H 'Content-Type: application/json' \
+      -H 'Accept: application/json, text/event-stream' \
+      -H "Authorization: Bearer $token" \
+      --max-time 20 \
+      --data-binary '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"dotfiles-install","version":"1"}}}')
+    if [[ $code != 200 ]]; then
+      echo "[superbrain] ${#token}-char token rejected by the brain" \
+           "(HTTP ${code:-no response}). Not registered."
+      return 1
+    fi
+  fi
+
+  if claude mcp add --scope user --transport http superbrain "$url" \
+       --header "Authorization: Bearer $token" >/dev/null 2>&1; then
+    echo "[superbrain] Registered (${#token}-char token verified)."
+  else
+    echo "[superbrain] 'claude mcp add' failed. Run it manually."
+    return 1
+  fi
+}
+
+if [[ $- == *i* ]]; then
+  __sb_register
 fi
+unset -f __sb_register
 # <<< superbrain MCP registration <<<
 EOF
